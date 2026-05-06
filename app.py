@@ -41,4 +41,3 @@ if st.button("تحليل النص"):
         else:
             st.success("✅ **النتيجة: Safe**")
 
-st.caption("Access secured via Hugging Face Token")
