@@ -21,7 +21,6 @@ except Exception as e:
     st.stop()
 
 st.title("🛡️ ArabGuard Content Moderator")
-st.write("فحص النصوص باستخدام Access Token للوصول للموديل.")
 
 user_input = st.text_area("النص المراد فحصه:", placeholder="اكتب رسالتك هنا...")
 
