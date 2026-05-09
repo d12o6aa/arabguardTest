@@ -1,5 +1,5 @@
 import streamlit as st
-from transformers import pipeline
+from transformers import VisionEncoderDecoderModel, ViTImageProcessor, AutoTokenizer
 from PIL import Image
 import torch
 import gc
@@ -7,42 +7,58 @@ import gc
 # --- Page Configuration ---
 st.set_page_config(page_title="Stable AI OCR", page_icon="🛡️")
 
-# --- Load Model Function ---
+# --- Load Model Components Separately ---
 @st.cache_resource
-def load_stable_model():
-    # استخدمنا الاسم الجديد للمهمة المتوافق مع تحديثات 2026
-    return pipeline("image-text-to-text", model="nlpconnect/vit-gpt2-image-captioning")
+def load_custom_model():
+    model_id = "nlpconnect/vit-gpt2-image-captioning"
+    
+    # تحميل كل جزء لوحده لضمان التوافق
+    model = VisionEncoderDecoderModel.from_pretrained(model_id)
+    feature_extractor = ViTImageProcessor.from_pretrained(model_id)
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
 
-# تعريف المتغير في الـ Global Scope عشان الـ 'Extract' button يشوفه
-pipe = None
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    
+    return model, feature_extractor, tokenizer, device
+
+# تحميل المكونات
+model, feature_extractor, tokenizer, device = None, None, None, None
 
 try:
-    with st.spinner('Loading Model...'):
-        pipe = load_stable_model()
+    with st.spinner('Loading Model Components...'):
+        model, feature_extractor, tokenizer, device = load_custom_model()
 except Exception as e:
-    st.error(f"Error loading model: {e}")
+    st.error(f"Error loading components: {e}")
 
 st.title("🛡️ AI Text Extractor")
-st.write("Optimized for Stability and Cloud Performance.")
+st.write("Professional Image-to-Text Deployment (2026 Standards)")
 
 uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
 
-if uploaded_file is not None:
+if uploaded_file is not None and model is not None:
     image = Image.open(uploaded_file).convert("RGB")
     image.thumbnail((600, 600))
-    st.image(image, caption="Processed Image", width='stretch')
+    st.image(image, caption="Ready for analysis", width='stretch')
     
     if st.button("Extract Text"):
-        # التأكد إن الـ pipe جاهز قبل الاستخدام
-        if pipe is not None:
-            with st.spinner('Analyzing...'):
-                try:
-                    result = pipe(image)
-                    st.success("Analysis Complete!")
-                    # عرض النتيجة
-                    st.write(f"**Result:** {result[0]['generated_text']}")
-                    gc.collect()
-                except Exception as e:
-                    st.error(f"Extraction failed: {e}")
-        else:
-            st.error("Model is not initialized. Please check the logs.")
+        with st.spinner('Processing...'):
+            try:
+                # تحويل الصورة لأرقام يفهمها الموديل
+                pixel_values = feature_extractor(images=[image], return_tensors="pt").pixel_values
+                pixel_values = pixel_values.to(device)
+
+                # توليد النص (Inference)
+                output_ids = model.generate(pixel_values, max_length=16, num_beams=4)
+
+                # تحويل الأرقام لكلمات
+                preds = tokenizer.batch_decode(output_ids, skip_special_tokens=True)
+                result = preds[0].strip()
+
+                st.success("Extraction Complete!")
+                st.subheader(f"Result: {result}")
+                
+                # تنظيف الذاكرة
+                gc.collect()
+            except Exception as e:
+                st.error(f"Inference failed: {e}")
