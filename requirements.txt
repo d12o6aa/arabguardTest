@@ -4,3 +4,7 @@ torch
 torchvision
 Pillow
 easyocr
+tiktoken
+datasets
+soundfile
+numpy

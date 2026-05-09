@@ -1,56 +1,52 @@
 import streamlit as st
-import easyocr
-from PIL import Image
+from transformers import pipeline
+import torch
 import numpy as np
 
 # --- Page Configuration ---
-st.set_page_config(page_title="AI Text Extractor (Fix)", page_icon="📝")
+st.set_page_config(page_title="AI Voice Generator", page_icon="🔊")
 
-# --- Load EasyOCR Reader (Caching for performance) ---
+# --- Load TTS Pipeline ---
 @st.cache_resource
-def load_ocr_reader():
-    # 'en' specifies English. You can add other languages like ['en', 'ar'].
-    # Using 'gpu=False' is safer for general compatibility, 
-    # but set it to True if you have a CUDA GPU.
-    reader = easyocr.Reader(['en'], gpu=False) 
-    return reader
+def load_tts_pipeline():
+    # نستخدم SpeechT5 للتحويل من نص لحديث (Text-to-Speech)
+    tts_pipe = pipeline("text-to-speech", model="microsoft/speecht5_tts")
+    return tts_pipe
 
-with st.spinner('Loading OCR Engine...'):
-    reader = load_ocr_reader()
+with st.spinner('Loading Voice Engine...'):
+    synthesizer = load_tts_pipeline()
 
 # --- User Interface ---
-st.title("📝 Dedicated Image-to-Text Extractor")
-st.write("Upload any complex screenshot to extract all English text accurately.")
+st.title("🔊 AI Voice Generator (TTS)")
+st.write("Enter English text below to generate a natural-sounding voice.")
 
-uploaded_file = st.file_uploader("Choose an image file...", type=["jpg", "jpeg", "png"])
+# Input text
+text_input = st.text_area("Enter Text:", placeholder="Type something here, e.g., 'Hello Doaa, how is your ArabGuard project going?'")
 
-if uploaded_file is not None:
-    # Open image
-    image_pil = Image.open(uploaded_file).convert("RGB")
-    st.image(image_pil, caption="Uploaded Image", use_container_width=True)
-    
-    if st.button("Extract Text"):
-        with st.spinner('Analyzing... (this might take a moment)'):
-            # EasyOCR requires a numpy array or a file path.
-            # Convert PIL image to NumPy array.
-            image_np = np.array(image_pil)
+if st.button("Generate Voice"):
+    if text_input.strip() == "":
+        st.warning("Please enter some text first!")
+    else:
+        with st.spinner('Synthesizing speech...'):
+            # تحميل الـ speaker embeddings (ضروري لموديل SpeechT5 عشان يحدد نبرة الصوت)
+            # هنستخدم ملف صوت افتراضي من Hugging Face لضبط النبرة
+            from datasets import load_dataset
+            embeddings_dataset = load_dataset("Matthijs/cmu-arctic-xvectors", split="validation")
+            speaker_embeddings = torch.tensor(embeddings_dataset[7306]["xvector"]).unsqueeze(0)
+
+            # توليد الصوت
+            speech = synthesizer(text_input, forward_params={"speaker_embeddings": speaker_embeddings})
             
-            # Read text
-            # result is a list of tuples: (bounding_box, text, confidence_score)
-            results = reader.readtext(image_np)
-            
+            # استخراج البيانات الصوتية ومعدل العينة (Sampling Rate)
+            audio_data = speech["audio"]
+            sampling_rate = speech["sampling_rate"]
+
+            # عرض النتائج
             st.divider()
-            st.subheader("Extracted Text:")
+            st.success("Voice generated successfully!")
             
-            if results:
-                # Join all detected text segments into a single string
-                extracted_text = " ".join([res[1] for res in results])
-                
-                st.success("Extraction Complete!")
-                # Use st.text_area for easy copying of long text (like code)
-                st.text_area("Result:", extracted_text, height=300)
-            else:
-                st.warning("No clear text was detected in this image.")
+            # تشغيل الصوت في المتصفح
+            st.audio(audio_data, format="audio/wav", sample_rate=sampling_rate)
 
 else:
-    st.info("Please upload a document or image to start the extraction.")
+    st.info("Ready to turn your text into speech.")
