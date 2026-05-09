@@ -1,42 +1,48 @@
 import streamlit as st
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
-import torch
+from transformers import pipeline
+from PIL import Image
 
-st.set_page_config(page_title="ArabGuard Detector", page_icon="🛡️")
+# --- إعدادات الصفحة ---
+st.set_page_config(page_title="Arabic/English OCR", page_icon="📝")
 
-
-HF_TOKEN = "hf_xxxxxxxxxxxxxxxxxxxxxxxxx"
-
+# --- تحميل موديل الـ OCR (بدون توكين) ---
 @st.cache_resource
-def load_model(token):
-    model_id = "d12o6aa/ArabGuard"
-    tokenizer = AutoTokenizer.from_pretrained(model_id, token=token)
-    model = AutoModelForSequenceClassification.from_pretrained(model_id, token=token)
-    return tokenizer, model
+def load_ocr_pipeline():
 
-try:
-    tokenizer, model = load_model(HF_TOKEN)
-except Exception as e:
-    st.error(f"فشل في الوصول للموديل: {e}")
-    st.stop()
+    ocr_pipe = pipeline("image-to-text", model="microsoft/trocr-base-printed")
+    return ocr_pipe
 
-st.title("🛡️ ArabGuard Content Moderator")
+with st.spinner('جارٍ تجهيز محرك القراءة...'):
+    pipe = load_ocr_pipeline()
 
-user_input = st.text_area("النص المراد فحصه:", placeholder="اكتب رسالتك هنا...")
+# --- واجهة المستخدم ---
+st.title("📝 استخراج النصوص من الصور (OCR)")
+st.write("ارفعي صورة تحتوي على نص إنجليزي وسأقوم بتحويلها إلى نص مكتوب.")
 
-if st.button("تحليل النص"):
-    if user_input.strip() == "":
-        st.warning("من فضلك اكتب نصاً أولاً!")
-    else:
-        inputs = tokenizer(user_input, return_tensors="pt", truncation=True, max_length=64)
-        
-        with torch.no_grad():
-            logits = model(**inputs).logits
-            prediction = torch.argmax(logits, dim=-1).item()
+uploaded_file = st.file_uploader("اختر صورة النص...", type=["jpg", "jpeg", "png"])
 
-        st.divider()
-        if prediction == 1:
-            st.error("⚠️ **النتيجة: Blocked (Malicious)**")
-        else:
-            st.success("✅ **النتيجة: Safe**")
+if uploaded_file is not None:
+    # عرض الصورة
+    image = Image.open(uploaded_file).convert("RGB")
+    st.image(image, caption="الصورة المرفوعة", use_container_width=True)
+    
+    if st.button("استخراج النص"):
+        with st.spinner('جارٍ القراءة وتحليل الحروف...'):
+            # تنفيذ الـ OCR
+            result = pipe(image)
+            
+            st.divider()
+            st.subheader("النص المستخرج:")
+            
+            # عرض النص الناتج
+            if result:
+                extracted_text = result[0]['generated_text']
+                st.success(extracted_text)
+                
+                # زر لنسخ النص
+                st.button("نسخ النص", on_click=lambda: st.write(f"تم النسخ: {extracted_text}"))
+            else:
+                st.warning("لم أتمكن من التعرف على نص في هذه الصورة.")
 
+else:
+    st.info("ارفعي صورة ورقة أو مستند لبدء الاستخراج.")
