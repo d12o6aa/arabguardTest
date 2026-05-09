@@ -11,7 +11,7 @@ st.set_page_config(page_title="Stable AI OCR", page_icon="🛡️")
 @st.cache_resource
 def load_stable_model():
     # الموديل ده خفيف جداً ومناسب للـ Cloud RAM
-    return pipeline("image-to-text", model="nlpconnect/vit-gpt2-image-captioning")
+    return pipeline("image-text-to-text", model="nlpconnect/vit-gpt2-image-captioning")
 
 # محاولة تحميل الموديل
 try:
