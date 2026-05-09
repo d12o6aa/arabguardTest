@@ -1,37 +1,56 @@
 import streamlit as st
-from transformers import TrOCRProcessor, VisionEncoderDecoderModel
+import easyocr
 from PIL import Image
-import torch
+import numpy as np
 
 # --- Page Configuration ---
-st.set_page_config(page_title="Professional OCR", page_icon="📝")
+st.set_page_config(page_title="AI Text Extractor (Fix)", page_icon="📝")
 
+# --- Load EasyOCR Reader (Caching for performance) ---
 @st.cache_resource
-def load_ocr_model():
-    # الموديل ده أدق بكتير في التعرف على النصوص المطبوعة
-    model_id = "microsoft/trocr-base-printed" 
-    processor = TrOCRProcessor.from_pretrained(model_id)
-    model = VisionEncoderDecoderModel.from_pretrained(model_id)
-    return processor, model
+def load_ocr_reader():
+    # 'en' specifies English. You can add other languages like ['en', 'ar'].
+    # Using 'gpu=False' is safer for general compatibility, 
+    # but set it to True if you have a CUDA GPU.
+    reader = easyocr.Reader(['en'], gpu=False) 
+    return reader
 
-processor, model = load_ocr_model()
+with st.spinner('Loading OCR Engine...'):
+    reader = load_ocr_reader()
 
-st.title("Professional Image-to-Text Deployment")
+# --- User Interface ---
+st.title("📝 Dedicated Image-to-Text Extractor")
+st.write("Upload any complex screenshot to extract all English text accurately.")
 
-uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("Choose an image file...", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-    image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Uploaded Image", use_container_width=True)
+    # Open image
+    image_pil = Image.open(uploaded_file).convert("RGB")
+    st.image(image_pil, caption="Uploaded Image", use_container_width=True)
     
     if st.button("Extract Text"):
-        with st.spinner('Extracting...'):
-            # تحضير الصورة
-            pixel_values = processor(images=image, return_tensors="pt").pixel_values
+        with st.spinner('Analyzing... (this might take a moment)'):
+            # EasyOCR requires a numpy array or a file path.
+            # Convert PIL image to NumPy array.
+            image_np = np.array(image_pil)
             
-            # تحديد بارامترات التوليد لضمان عدم الهلوسة
-            generated_ids = model.generate(pixel_values, max_new_tokens=100)
-            extracted_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+            # Read text
+            # result is a list of tuples: (bounding_box, text, confidence_score)
+            results = reader.readtext(image_np)
             
-            st.success("Extraction Complete!")
-            st.markdown(f"### Result:\n **{extracted_text}**")
+            st.divider()
+            st.subheader("Extracted Text:")
+            
+            if results:
+                # Join all detected text segments into a single string
+                extracted_text = " ".join([res[1] for res in results])
+                
+                st.success("Extraction Complete!")
+                # Use st.text_area for easy copying of long text (like code)
+                st.text_area("Result:", extracted_text, height=300)
+            else:
+                st.warning("No clear text was detected in this image.")
+
+else:
+    st.info("Please upload a document or image to start the extraction.")
