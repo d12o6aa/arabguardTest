@@ -1,52 +1,47 @@
 import streamlit as st
-from transformers import pipeline
+from transformers import pipeline, SpeechT5Processor, SpeechT5ForTextToSpeech, SpeechT5HifiGan
 import torch
 import numpy as np
+from datasets import load_dataset
 
 # --- Page Configuration ---
 st.set_page_config(page_title="AI Voice Generator", page_icon="🔊")
 
-# --- Load TTS Pipeline ---
 @st.cache_resource
-def load_tts_pipeline():
-    # نستخدم SpeechT5 للتحويل من نص لحديث (Text-to-Speech)
-    tts_pipe = pipeline("text-to-speech", model="microsoft/speecht5_tts")
-    return tts_pipe
+def load_tts_models():
+    # تحميل المكونات يدويًا لضمان استقرار الأداء
+    processor = SpeechT5Processor.from_pretrained("microsoft/speecht5_tts")
+    model = SpeechT5ForTextToSpeech.from_pretrained("microsoft/speecht5_tts")
+    vocoder = SpeechT5HifiGan.from_pretrained("microsoft/speecht5_hifigan")
+    return processor, model, vocoder
 
 with st.spinner('Loading Voice Engine...'):
-    synthesizer = load_tts_pipeline()
+    processor, model, vocoder = load_tts_models()
 
 # --- User Interface ---
 st.title("🔊 AI Voice Generator (TTS)")
-st.write("Enter English text below to generate a natural-sounding voice.")
 
-# Input text
-text_input = st.text_area("Enter Text:", placeholder="Type something here, e.g., 'Hello Doaa, how is your ArabGuard project going?'")
+text_input = st.text_area("Enter English Text:", placeholder="Type here...")
 
 if st.button("Generate Voice"):
     if text_input.strip() == "":
-        st.warning("Please enter some text first!")
+        st.warning("Please enter some text!")
     else:
-        with st.spinner('Synthesizing speech...'):
-            # تحميل الـ speaker embeddings (ضروري لموديل SpeechT5 عشان يحدد نبرة الصوت)
-            # هنستخدم ملف صوت افتراضي من Hugging Face لضبط النبرة
-            from datasets import load_dataset
-            embeddings_dataset = load_dataset("Matthijs/cmu-arctic-xvectors", split="validation")
-            speaker_embeddings = torch.tensor(embeddings_dataset[7306]["xvector"]).unsqueeze(0)
+        with st.spinner('Synthesizing...'):
+            try:
+                # حل مشكلة الـ Dataset: تحميل الـ xvector بطريقة متوافقة مع التحديثات الجديدة
+                # هنضيف trust_remote_code=True عشان نتخطى الخطأ
+                embeddings_dataset = load_dataset("Matthijs/cmu-arctic-xvectors", split="validation", trust_remote_code=True)
+                speaker_embeddings = torch.tensor(embeddings_dataset[7306]["xvector"]).unsqueeze(0)
 
-            # توليد الصوت
-            speech = synthesizer(text_input, forward_params={"speaker_embeddings": speaker_embeddings})
-            
-            # استخراج البيانات الصوتية ومعدل العينة (Sampling Rate)
-            audio_data = speech["audio"]
-            sampling_rate = speech["sampling_rate"]
+                # معالجة النص
+                inputs = processor(text=text_input, return_tensors="pt")
 
-            # عرض النتائج
-            st.divider()
-            st.success("Voice generated successfully!")
-            
-            # تشغيل الصوت في المتصفح
-            st.audio(audio_data, format="audio/wav", sample_rate=sampling_rate)
+                # توليد الصوت باستخدام الموديل والـ vocoder
+                speech = model.generate_speech(inputs["input_ids"], speaker_embeddings, vocoder=vocoder)
 
-else:
-    st.info("Ready to turn your text into speech.")
+                # عرض الصوت
+                st.audio(speech.numpy(), format="audio/wav", sample_rate=16000)
+                st.success("Done!")
+            except Exception as e:
+                st.error(f"Error during synthesis: {e}")
