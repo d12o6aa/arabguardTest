@@ -1,12 +1,6 @@
 streamlit
 transformers
 torch
-torchvision
-Pillow
-easyocr
-tiktoken
-datasets
 soundfile
-numpy
 sentencepiece
 protobuf
