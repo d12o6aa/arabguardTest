@@ -8,3 +8,5 @@ tiktoken
 datasets
 soundfile
 numpy
+sentencepiece
+protobuf
